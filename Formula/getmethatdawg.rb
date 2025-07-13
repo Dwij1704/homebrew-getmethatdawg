@@ -1,8 +1,8 @@
 class Getmethatdawg < Formula
   desc "Zero-config deployment for Python AI agents and web services"
   homepage "https://github.com/Dwij1704/getmethatdawg"
-  url "https://github.com/Dwij1704/getmethatdawg/releases/download/v1.1.1/getmethatdawg-source.tar.gz"
-  sha256 "32a8d8cce1aa75201bbe40f6bebe60adfdc67a0ec6909ab4895899956c850949"
+  url "https://github.com/Dwij1704/getmethatdawg/releases/download/v1.1.2/getmethatdawg-source.tar.gz"
+  sha256 "2c766adc968c7c404f293cdeacaa01aba54d7f76e6cf83f13e3cf64efbd20c26"
   license "MIT"
 
   depends_on "python@3.11"
@@ -171,7 +171,31 @@ class Getmethatdawg < Formula
       
       set -euo pipefail
       
-      source "#{bin}/getmethatdawg"  # Import logging functions
+      # Import logging functions (extract them to avoid circular sourcing)
+      
+      # Colors for output
+      RED='\\033[0;31m'
+      GREEN='\\033[0;32m'
+      YELLOW='\\033[1;33m'
+      BLUE='\\033[0;34m'
+      NC='\\033[0m' # No Color
+      
+      # Logging functions
+      log_info() {
+          echo -e "${BLUE}ℹ${NC} $1"
+      }
+      
+      log_success() {
+          echo -e "${GREEN}✓${NC} $1"
+      }
+      
+      log_warning() {
+          echo -e "${YELLOW}⚠${NC} $1"
+      }
+      
+      log_error() {
+          echo -e "${RED}✗${NC} $1"
+      }
       
       deploy_python_file() {
           local python_file="$1"
@@ -198,7 +222,9 @@ class Getmethatdawg < Formula
           
           # Cleanup function
           cleanup() {
-              rm -rf "$temp_dir"
+              if [[ -n "${temp_dir:-}" ]] && [[ -d "${temp_dir:-}" ]]; then
+                  rm -rf "$temp_dir"
+              fi
           }
           trap cleanup EXIT
           
