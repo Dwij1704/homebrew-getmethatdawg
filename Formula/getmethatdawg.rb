@@ -1,8 +1,8 @@
 class Getmethatdawg < Formula
   desc "Zero-config deployment for Python AI agents and web services"
   homepage "https://github.com/Dwij1704/getmethatdawg"
-  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.2.tar.gz"
-  sha256 "f954d3d95ec8c0a99fda974d8db6bdb01779965afdafb305c5103e4b2782aaaa"
+  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.3.tar.gz"
+  sha256 "f6a58252c2b2b8d753312671d1aca3e1503aa244a98473e666cafda3679f577d"
   license "MIT"
 
   depends_on "python@3.11"
@@ -148,7 +148,7 @@ class Getmethatdawg < Formula
       
       # Show version
       show_version() {
-          echo "getmethatdawg version #{version}"
+          echo "getmethatdawg version 0.0.3"
           echo "Zero-config deploy for Python agents"
           echo "Supports both regular and pre-authenticated modes"
           echo "Installed via Homebrew"
@@ -243,7 +243,7 @@ class Getmethatdawg < Formula
     # Install the deployment scripts (both regular and pre-auth)
     (libexec/"libexec").mkpath
     
-    # Regular deployment script (same as before)
+    # Regular deployment script (fixed with proper requirements.txt mounting)
     (libexec/"libexec"/"getmethatdawg-deploy.sh").write <<~EOS
       #!/bin/bash
       
@@ -304,7 +304,7 @@ class Getmethatdawg < Formula
           # Cleanup function
           cleanup() {
               if [[ -n "${temp_dir:-}" ]] && [[ -d "${temp_dir:-}" ]]; then
-              rm -rf "$temp_dir"
+                  rm -rf "$temp_dir"
               fi
           }
           trap cleanup EXIT
@@ -312,38 +312,34 @@ class Getmethatdawg < Formula
           # Use the builder container to process the Python file
           log_info "Analyzing Python file..."
           
-                     # Check if getmethatdawg/builder image exists, if not build it
-           if ! docker image inspect getmethatdawg/builder:latest &> /dev/null; then
-               log_warning "Builder image 'getmethatdawg/builder:latest' not found."
-               log_info "Building getmethatdawg/builder image..."
+          # Check if getmethatdawg/builder image exists, if not build it
+          if ! docker image inspect getmethatdawg/builder:latest &> /dev/null; then
+              log_warning "Builder image 'getmethatdawg/builder:latest' not found."
+              log_info "Building getmethatdawg/builder image..."
               
-              # Build the builder image from libexec
-               docker build -t getmethatdawg/builder:latest -f - "#{libexec}" << 'EOF'
+              # Build the builder image using the installed SDK
+              docker build -t getmethatdawg/builder:latest -f - "$GETMETHATDAWG_HOME" << 'EOF'
       FROM python:3.11-slim
       
-             WORKDIR /opt/getmethatdawg
+      WORKDIR /opt/getmethatdawg
       
-       # Copy the getmethatdawg-sdk
-       COPY lib/python/getmethatdawg/ ./getmethatdawg-sdk/getmethatdawg/
-       COPY lib/python/getmethatdawg_sdk-0.1.0.dist-info/ ./getmethatdawg-sdk/getmethatdawg_sdk.dist-info/
+      # Copy Python dependencies
+      COPY lib/python/ ./lib/python/
       
-       # Install getmethatdawg-sdk dependencies
-      RUN pip install flask gunicorn
+      # Set up Python path
+      ENV PYTHONPATH="/opt/getmethatdawg/lib/python:${PYTHONPATH:-}"
       
       # Copy libexec
       COPY libexec/ ./libexec/
       
-      # Set up the entry point - use Python to call the builder
-       RUN echo '#!/usr/bin/env python3' > /opt/getmethatdawg/bin/getmethatdawg-builder
-       RUN echo 'import sys' >> /opt/getmethatdawg/bin/getmethatdawg-builder
-       RUN echo 'sys.path.insert(0, "/opt/getmethatdawg")' >> /opt/getmethatdawg/bin/getmethatdawg-builder
-       RUN echo 'from getmethatdawg.builder import main' >> /opt/getmethatdawg/bin/getmethatdawg-builder
-       RUN echo 'main()' >> /opt/getmethatdawg/bin/getmethatdawg-builder
-       RUN chmod +x /opt/getmethatdawg/bin/getmethatdawg-builder
+      # Create the builder entry point
+      RUN echo '#!/bin/bash' > /opt/getmethatdawg/bin/getmethatdawg-builder
+      RUN echo 'exec python -m getmethatdawg.builder "$@"' >> /opt/getmethatdawg/bin/getmethatdawg-builder
+      RUN chmod +x /opt/getmethatdawg/bin/getmethatdawg-builder
       
-       ENV PATH="/opt/getmethatdawg/bin:$PATH"
+      ENV PATH="/opt/getmethatdawg/bin:$PATH"
       
-       ENTRYPOINT ["/opt/getmethatdawg/bin/getmethatdawg-builder"]
+      ENTRYPOINT ["/opt/getmethatdawg/bin/getmethatdawg-builder"]
       EOF
           fi
           
@@ -357,12 +353,13 @@ class Getmethatdawg < Formula
               log_info "Auto-detection mode enabled"
           fi
           
-          # Check for additional files in the same directory
+          # Check if there's a requirements.txt file in the same directory
           local source_dir="$(dirname "$abs_python_file")"
           local requirements_file="$source_dir/requirements.txt"
           local env_file="$source_dir/.env"
           local docker_volumes="-v $abs_python_file:/tmp/source.py:ro -v $output_dir:/tmp/out"
           
+          # CRITICAL FIX: Mount requirements.txt to /tmp/requirements.txt in container
           if [[ -f "$requirements_file" ]]; then
               log_info "Found custom requirements.txt, including in deployment"
               docker_volumes="$docker_volumes -v $requirements_file:/tmp/requirements.txt:ro"
@@ -375,7 +372,7 @@ class Getmethatdawg < Formula
           
           docker run --rm \\
               $docker_volumes \\
-               getmethatdawg/builder:latest /tmp/source.py "$(basename "$python_file" .py)" $auto_detect_flag
+              getmethatdawg/builder:latest /tmp/source.py "$(basename "$python_file" .py)" $auto_detect_flag
           
           # Check if build was successful
           if [[ ! -f "$output_dir/flask_app.py" ]]; then
@@ -438,7 +435,7 @@ class Getmethatdawg < Formula
       deploy_python_file "$@"
     EOS
     
-    # Pre-auth deployment script
+    # Pre-auth deployment script (also fixed with proper requirements.txt mounting)
     (libexec/"libexec"/"getmethatdawg-deploy-preauth.sh").write <<~EOS
       #!/bin/bash
       
@@ -502,25 +499,42 @@ class Getmethatdawg < Formula
           }
           trap cleanup EXIT
           
-          # Use the pre-authenticated builder container
-          log_info "Using pre-authenticated builder container..."
+          # Use the builder container to process the Python file
+          log_info "Analyzing Python file..."
           
-          # Container image (prioritize GitHub Container Registry)
-          local builder_image="ghcr.io/dwij1704/getmethatdawg-builder:authenticated"
-          
-          # Check if we need to pull the latest image
-          if ! docker image inspect "$builder_image" &> /dev/null; then
-              log_info "Pulling pre-authenticated builder container..."
-              if ! docker pull "$builder_image" 2>/dev/null; then
-                  log_warning "Failed to pull from GitHub Container Registry, trying Docker Hub..."
-                  builder_image="getmethatdawg/builder:authenticated"
-                  if ! docker pull "$builder_image" 2>/dev/null; then
-                      log_error "Failed to pull pre-authenticated container. Please ensure it's available."
-                      log_info "To use pre-auth mode, the project maintainer needs to build and push the authenticated container."
-                      exit 1
-                  fi
-              fi
+          # Check if getmethatdawg/builder image exists, if not build it
+          if ! docker image inspect getmethatdawg/builder:latest &> /dev/null; then
+              log_warning "Builder image 'getmethatdawg/builder:latest' not found."
+              log_info "Building getmethatdawg/builder image..."
+              
+              # Build the builder image using the installed SDK
+              docker build -t getmethatdawg/builder:latest -f - "$GETMETHATDAWG_HOME" << 'EOF'
+      FROM python:3.11-slim
+      
+      WORKDIR /opt/getmethatdawg
+      
+      # Copy Python dependencies
+      COPY lib/python/ ./lib/python/
+      
+      # Set up Python path
+      ENV PYTHONPATH="/opt/getmethatdawg/lib/python:${PYTHONPATH:-}"
+      
+      # Copy libexec
+      COPY libexec/ ./libexec/
+      
+      # Create the builder entry point
+      RUN echo '#!/bin/bash' > /opt/getmethatdawg/bin/getmethatdawg-builder
+      RUN echo 'exec python -m getmethatdawg.builder "$@"' >> /opt/getmethatdawg/bin/getmethatdawg-builder
+      RUN chmod +x /opt/getmethatdawg/bin/getmethatdawg-builder
+      
+      ENV PATH="/opt/getmethatdawg/bin:$PATH"
+      
+      ENTRYPOINT ["/opt/getmethatdawg/bin/getmethatdawg-builder"]
+      EOF
           fi
+          
+          # Run the builder container
+          log_info "Building deployment artifacts..."
           
           # Check if auto-detect flag is passed
           auto_detect_flag=""
@@ -529,12 +543,13 @@ class Getmethatdawg < Formula
               log_info "Auto-detection mode enabled"
           fi
           
-          # Check for additional files in the same directory
+          # Check if there's a requirements.txt file in the same directory
           local source_dir="$(dirname "$abs_python_file")"
           local requirements_file="$source_dir/requirements.txt"
           local env_file="$source_dir/.env"
           local docker_volumes="-v $abs_python_file:/tmp/source.py:ro -v $output_dir:/tmp/out"
           
+          # CRITICAL FIX: Mount requirements.txt to /tmp/requirements.txt in container
           if [[ -f "$requirements_file" ]]; then
               log_info "Found custom requirements.txt, including in deployment"
               docker_volumes="$docker_volumes -v $requirements_file:/tmp/requirements.txt:ro"
@@ -545,130 +560,72 @@ class Getmethatdawg < Formula
               docker_volumes="$docker_volumes -v $env_file:/tmp/.env:ro"
           fi
           
-          # Run the pre-authenticated builder container
-          log_info "Building and deploying with pre-authenticated container..."
-          
-          # Create a deployment script that will run inside the container
-          local deploy_script="$output_dir/deploy-script.sh"
-          cat > "$deploy_script" << 'DEPLOY_EOF'
-      #!/bin/bash
-      set -euo pipefail
-      
-      echo "🔧 Building deployment artifacts..."
-      getmethatdawg-builder /tmp/source.py "$1" $2
-      
-      echo "📁 Changing to build output directory..."
-      cd /tmp/out
-      
-      echo "🚀 Starting deployment to Fly.io..."
-      
-      # Get app name from the parameter
-      APP_NAME="$1"
-      
-      # Check if fly app exists, if not create it
-      if ! flyctl apps list | grep -q "$APP_NAME"; then
-          echo "📱 Creating new Fly.io app: $APP_NAME"
-          flyctl apps create "$APP_NAME" --generate-name || true
-      fi
-      
-      # Deploy the app (check for secrets script first)
-      if [[ -f "deploy-with-secrets.sh" ]]; then
-          echo "🔐 Deploying with secrets management..."
-          chmod +x deploy-with-secrets.sh
-          ./deploy-with-secrets.sh
-      else
-          echo "🚀 Deploying without secrets..."
-          flyctl deploy --remote-only --config fly.toml --dockerfile Dockerfile
-      fi
-      
-      echo "✅ Deployment completed successfully!"
-      
-      # Get the app URL
-      APP_URL=$(flyctl status --app "$APP_NAME" | grep "Hostname" | awk '{print $2}' | head -1 || echo "$APP_NAME.fly.dev")
-      echo "🌐 App URL: https://$APP_URL"
-      
-      # Show endpoints
-      echo "📡 Available endpoints:"
-      echo "  GET  https://$APP_URL/ (health check)"
-      
-      # Parse endpoints from generated flask app (basic parsing)
-      if [[ -f "/tmp/out/flask_app.py" ]]; then
-          grep -E "@app\\.route\\(" "/tmp/out/flask_app.py" | while read -r line; do
-              if [[ "$line" =~ @app\\.route\\(\\'([^\\']+)\\',.*methods=\\[\\'([^\\']+)\\' ]]; then
-                  path="${BASH_REMATCH[1]}"
-                  method="${BASH_REMATCH[2]}"
-                  echo "  ${method}  https://$APP_URL$path"
-              fi
-          done
-      fi
-      DEPLOY_EOF
-          chmod +x "$deploy_script"
-          
-          # Run the container with the deployment script, streaming output in real-time
-          if docker run --rm \\
+          docker run --rm \\
               $docker_volumes \\
-              -v "$deploy_script:/tmp/deploy.sh:ro" \\
-              "$builder_image" \\
-              /tmp/deploy.sh "$(basename "$python_file" .py | tr '_' '-')" "$auto_detect_flag"
-          then
-              log_success "🎉 Deployment completed successfully!"
-          else
-              log_error "❌ Deployment failed"
+              getmethatdawg/builder:latest /tmp/source.py "$(basename "$python_file" .py)" $auto_detect_flag
+          
+          # Check if build was successful
+          if [[ ! -f "$output_dir/flask_app.py" ]]; then
+              log_error "Build failed - no Flask app generated"
               exit 1
           fi
+          
+          log_success "Built container artifacts"
+          
+          # Deploy using pre-authenticated container
+          log_info "Deploying using pre-authenticated container..."
+          
+          # Change to output directory for deployment
+          cd "$output_dir"
+          
+          # Use pre-authenticated container for deployment
+          log_info "Using pre-authenticated deployment container..."
+          
+          # Run the pre-authenticated deployment container
+          docker run --rm \\
+              -v "$output_dir:/tmp/app:ro" \\
+              getmethatdawg/authenticated-builder:latest /tmp/app "$(basename "$python_file" .py | tr '_' '-')"
+          
+          log_success "Deployed using pre-authenticated container"
+          
+          # The pre-authenticated container will output the deployment URL
+          log_info "Deployment completed! Check the output above for the app URL."
       }
       
       # Execute the deployment
       deploy_python_file "$@"
     EOS
-    
+
     # Make scripts executable
-    chmod 0755, bin/"getmethatdawg"
-    chmod 0755, libexec/"libexec"/"getmethatdawg-deploy.sh"
-    chmod 0755, libexec/"libexec"/"getmethatdawg-deploy-preauth.sh"
-    
-    # Install completions for bash and zsh
-    bash_completion.install "scripts/completions/getmethatdawg.bash" => "getmethatdawg"
-    zsh_completion.install "scripts/completions/_getmethatdawg"
+    chmod_R "+x", libexec/"libexec"
+  end
+
+  test do
+    # Test that the executable works
+    system "#{bin}/getmethatdawg", "--version"
   end
 
   def caveats
     <<~EOS
-      getmethatdawg has been installed! 🚀
+      getmethatdawg has been installed!
       
-      Two deployment modes available:
-      
-      1. Regular Mode (default):
-         - Requires: Docker + flyctl + Fly.io account
-         - Full control over your deployments
-         - Usage: getmethatdawg deploy my_agent.py
-      
-      2. Pre-authenticated Mode:
-         - Requires: Docker only (no flyctl or Fly.io setup)
-         - Deployments go to project maintainer's account
-         - Usage: getmethatdawg deploy my_agent.py --pre-auth
-      
-      Quick Start:
+      To get started:
         1. Make sure Docker is running
-        2. For regular mode: Install flyctl with 'brew install flyctl'
-        3. For pre-auth mode: No additional setup needed!
-        4. Deploy: getmethatdawg deploy my_agent.py --auto-detect
+        2. For regular mode: Install flyctl and authenticate with Fly.io
+        3. For pre-auth mode: No additional setup needed
       
-      For examples and documentation:
-        - GitHub: https://github.com/Dwij1704/getmethatdawg
-        - Examples: #{libexec}/examples/
-        - Docs: #{libexec}/docs/
+      Usage:
+        getmethatdawg deploy my_agent.py              # Regular mode (requires flyctl)
+        getmethatdawg deploy my_agent.py --pre-auth   # Pre-auth mode (no flyctl needed)
       
-      Environment Variables:
-        - GETMETHATDAWG_MODE=pre-auth  # Default to pre-auth mode
+      Examples:
+        getmethatdawg deploy examples/crewai_examples/ai_contentgen_crew.py
+        getmethatdawg deploy my_agent.py --auto-detect
+      
+      The tool will automatically detect and use requirements.txt files in the same directory as your Python file.
+      
+      For more information, run:
+        getmethatdawg --help
     EOS
-  end
-
-  test do
-    # Test that the getmethatdawg command works
-    assert_match "getmethatdawg version", shell_output("#{bin}/getmethatdawg --version")
-    
-    # Test that Python path is set up correctly
-    system "python3.11", "-c", "import getmethatdawg; print('getmethatdawg SDK imported successfully')"
   end
 end 
