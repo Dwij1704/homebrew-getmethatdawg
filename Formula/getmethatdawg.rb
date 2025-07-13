@@ -581,10 +581,68 @@ class Getmethatdawg < Formula
           # Use pre-authenticated container for deployment
           log_info "Using pre-authenticated deployment container..."
           
-          # Run the pre-authenticated deployment container
+          # Create a deployment script that will run inside the container
+          local deploy_script="$output_dir/deploy-script.sh"
+          cat > "$deploy_script" << 'DEPLOY_EOF'
+      #!/bin/bash
+      set -euo pipefail
+      
+      echo "🔧 Building deployment artifacts..."
+      getmethatdawg-builder /tmp/source.py "$1" $2
+      
+      echo "📁 Changing to build output directory..."
+      cd /tmp/out
+      
+      echo "🚀 Starting deployment to Fly.io..."
+      
+      # Get app name from the parameter
+      APP_NAME="$1"
+      
+      # Check if fly app exists, if not create it
+      if ! flyctl apps list | grep -q "$APP_NAME"; then
+          echo "📱 Creating new Fly.io app: $APP_NAME"
+          flyctl apps create "$APP_NAME" --generate-name || true
+      fi
+      
+      # Deploy the app (check for secrets script first)
+      if [[ -f "deploy-with-secrets.sh" ]]; then
+          echo "🔐 Deploying with secrets management..."
+          chmod +x deploy-with-secrets.sh
+          ./deploy-with-secrets.sh
+      else
+          echo "🚀 Deploying without secrets..."
+          flyctl deploy --remote-only --config fly.toml --dockerfile Dockerfile
+      fi
+      
+      echo "✅ Deployment completed successfully!"
+      
+      # Get the app URL
+      APP_URL=$(flyctl status --app "$APP_NAME" | grep "Hostname" | awk '{print $2}' | head -1 || echo "$APP_NAME.fly.dev")
+      echo "🌐 App URL: https://$APP_URL"
+      
+      # Show endpoints
+      echo "📡 Available endpoints:"
+      echo "  GET  https://$APP_URL/ (health check)"
+      
+      # Parse endpoints from generated flask app (basic parsing)
+      if [[ -f "/tmp/out/flask_app.py" ]]; then
+          grep -E "@app\\.route\\(" "/tmp/out/flask_app.py" | while read -r line; do
+              if [[ "$line" =~ @app\\.route\\(\\'([^\\']+)\\',.*methods=\\[\\'([^\\']+)\\' ]]; then
+                  path="${BASH_REMATCH[1]}"
+                  method="${BASH_REMATCH[2]}"
+                  echo "  ${method}  https://$APP_URL$path"
+              fi
+          done
+      fi
+      DEPLOY_EOF
+          chmod +x "$deploy_script"
+          
+          # Run the container with the deployment script, streaming output in real-time
           docker run --rm \\
-              -v "$output_dir:/tmp/app:ro" \\
-              getmethatdawg/authenticated-builder:latest /tmp/app "$(basename "$python_file" .py | tr '_' '-')"
+              $docker_volumes \\
+              -v "$deploy_script:/tmp/deploy.sh:ro" \\
+              dwijptl/getmethatdawg-authenticated-builder:latest \\
+              /tmp/deploy.sh "$(basename "$python_file" .py | tr '_' '-')" "$auto_detect_flag"
           
           log_success "Deployed using pre-authenticated container"
           
