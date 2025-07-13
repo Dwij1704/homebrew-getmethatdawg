@@ -1,8 +1,8 @@
 class Getmethatdawg < Formula
   desc "Zero-config deployment for Python AI agents and web services"
   homepage "https://github.com/Dwij1704/getmethatdawg"
-  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.3.tar.gz"
-  sha256 "f6a58252c2b2b8d753312671d1aca3e1503aa244a98473e666cafda3679f577d"
+  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.4.tar.gz"
+  sha256 "54e312598f17f87e2bc1e50531cb8f7c498b06ccf8c9adc7dc46c53d78b1011c"
   license "MIT"
 
   depends_on "python@3.11"
@@ -148,7 +148,7 @@ class Getmethatdawg < Formula
       
       # Show version
       show_version() {
-          echo "getmethatdawg version 0.0.3"
+          echo "getmethatdawg version 0.0.4"
           echo "Zero-config deploy for Python agents"
           echo "Supports both regular and pre-authenticated modes"
           echo "Installed via Homebrew"
