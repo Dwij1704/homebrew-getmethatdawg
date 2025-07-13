@@ -1,8 +1,8 @@
 class Getmethatdawg < Formula
   desc "Zero-config deployment for Python AI agents and web services"
   homepage "https://github.com/Dwij1704/getmethatdawg"
-  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.1.tar.gz"
-  sha256 "2d9c94e7a0020ca11435b6883c1fde3e42267c1c5bf462ceaab1682e5c0bd671"
+  url "https://github.com/Dwij1704/getmethatdawg/archive/v0.0.2.tar.gz"
+  sha256 "f954d3d95ec8c0a99fda974d8db6bdb01779965afdafb305c5103e4b2782aaaa"
   license "MIT"
 
   depends_on "python@3.11"
