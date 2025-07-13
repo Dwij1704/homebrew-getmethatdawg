@@ -1,8 +1,8 @@
 class Getmethatdawg < Formula
   desc "Zero-config deployment for Python AI agents and web services"
   homepage "https://github.com/Dwij1704/getmethatdawg"
-  url "https://github.com/Dwij1704/getmethatdawg/releases/download/v1.1.0/getmethatdawg-source.tar.gz"
-  sha256 "3b329cb148f0deed98c77bfba59bb50039000b3f9cbe5f03788952d80f3bcf0f"
+  url "https://github.com/Dwij1704/getmethatdawg/releases/download/v1.1.1/getmethatdawg-source.tar.gz"
+  sha256 "32a8d8cce1aa75201bbe40f6bebe60adfdc67a0ec6909ab4895899956c850949"
   license "MIT"
 
   depends_on "python@3.11"
@@ -26,7 +26,7 @@ class Getmethatdawg < Formula
       set -euo pipefail
       
       # Set up Python path to find getmethatdawg modules
-      export PYTHONPATH="#{libexec}/lib/python:$PYTHONPATH"
+      export PYTHONPATH="#{libexec}/lib/python:${PYTHONPATH:-}"
       export GETMETHATDAWG_HOME="#{libexec}"
       export GETMETHATDAWG_LIBEXEC="#{libexec}/libexec"
       
